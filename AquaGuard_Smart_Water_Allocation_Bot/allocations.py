@@ -17,7 +17,7 @@ class AllocationProcessor:
             cycle = int(parts[4].split(':')[1].strip())
             return region, population, sector, volume, cycle, None
         except Exception as e:
-            return None, None, None, None, None, f"Invalid request format: {str(e)}"
+            return None, None, None, None, None, f"Invalid request format. Please use: Region: id, Population: pop, Sector: sec, Volume: vol, Cycle: cyc"
 
     def process_request(self, request_text, drought_mode):
         region, population, sector, volume, cycle, error = self.parse_request(request_text)
@@ -25,10 +25,10 @@ class AllocationProcessor:
             return error, "error"
             
         if sector not in ['domestic', 'agricultural', 'industrial']:
-            return "Invalid sector", "error"
+            return f"Invalid sector '{sector}'. Must be domestic, agricultural, or industrial.", "error"
             
         if sector in self.water_alloc.allocations[region][cycle]:
-            return f"Duplicate request", "error"
+            return f"Duplicate request for region {region}, cycle {cycle}, sector {sector}.", "error"
 
         level = RESERVOIR_LEVELS.get(region, 100)
         total_supply = TOTAL_SUPPLIES.get(region, 0)
@@ -36,27 +36,55 @@ class AllocationProcessor:
         available = total_supply * level / 100 - allocated
 
         benchmark = self.get_benchmark(sector, population, drought_mode)
+        original_volume = volume
         
         if volume > benchmark:
             volume = benchmark
             
+        
         if level < RESERVOIR_SAFE_LEVEL and sector != 'domestic':
-            return f"Rejected due to reservoir safety", "rejected"
+            return (f"Request REJECTED: Reservoir level ({level}%) is below safety threshold ({RESERVOIR_SAFE_LEVEL}%) "
+                   f"and this is a non-domestic request. Only domestic requests are being processed during low reservoir conditions."), "rejected"
             
         if drought_mode and sector != 'domestic':
-            return f"Rejected due to drought mode", "rejected"
+            return (f"Request REJECTED: Drought mode is ACTIVE. Only domestic requests are being processed to conserve water. "
+                   f"Please try again when drought conditions end."), "rejected"
 
         if volume > available:
             volume = max(0, available)
 
         if volume <= 0:
-            return f"Rejected due to insufficient supply", "rejected"
+            return (f"Request REJECTED: Insufficient water available. "
+                   f"Available: {available:,.0f}L, Requested: {original_volume:,.0f}L"), "rejected"
 
-        decision = "Approved" if volume == benchmark else "Reduced"
-        reason = f"Allocated {volume:.0f} liters"
         
-        self.water_alloc.add_allocation(region, cycle, sector, volume, decision, reason)
-        return f"{decision}: {reason}", decision.lower()
+        self.water_alloc.add_allocation(region, cycle, sector, volume, 
+                                       "Approved" if volume == benchmark else "Reduced", 
+                                       f"Allocated {volume:,.0f}L")
+
+        
+        if volume == benchmark:
+            return (f"✅ **REQUEST APPROVED**\n\n"
+                   f"**Details:**\n"
+                   f"- Region: {region}\n"
+                   f"- Sector: {sector.capitalize()}\n"
+                   f"- Allocated: {volume:,.0f} liters\n"
+                   f"- Benchmark: {benchmark:,.0f} liters\n"
+                   f"- Available Supply: {available:,.0f} liters\n"
+                   f"- Reservoir Level: {level}%\n\n"
+                   f"Your request has been fully approved at the benchmark rate."), "approved"
+        else:
+            return (f"⚠️ **REQUEST PARTIALLY APPROVED**\n\n"
+                   f"**Details:**\n"
+                   f"- Region: {region}\n"
+                   f"- Sector: {sector.capitalize()}\n"
+                   f"- Requested: {original_volume:,.0f} liters\n"
+                   f"- Allocated: {volume:,.0f} liters\n"
+                   f"- Benchmark: {benchmark:,.0f} liters\n"
+                   f"- Available Supply: {available:,.0f} liters\n"
+                   f"- Reservoir Level: {level}%\n\n"
+                   f"**Reason:** {'Request exceeded sector benchmark' if original_volume > benchmark else 'Limited by available supply'}\n\n"
+                   f"Your request has been partially approved due to current water availability constraints."), "reduced"
 
     def get_benchmark(self, sector, population, drought_mode):
         if sector == 'domestic':
@@ -66,6 +94,6 @@ class AllocationProcessor:
         else:
             benchmark = INDUSTRIAL_BENCHMARK
             
-        if drought_mode:
-            benchmark /= 2
+        if drought_mode and sector == 'domestic':
+            benchmark /= 2  
         return benchmark
