@@ -7,6 +7,8 @@ from config import RESERVOIR_LEVELS, TOTAL_SUPPLIES
 class ScenarioSimulator:
     def __init__(self, water_alloc):
         self.water_alloc = water_alloc
+        self.simulation_results = None  # Store results between renders
+        self.last_params = None  # Store last simulation parameters
         
     def render(self):
         st.subheader("🎯 Scenario Planning & Simulation")
@@ -33,18 +35,30 @@ class ScenarioSimulator:
             submitted = st.form_submit_button("🚀 Run Simulation", use_container_width=True)
             
             if submitted:
-                self.run_simulation(
+                # Store results in session state instead of displaying immediately
+                self.last_params = {
+                    'drought': sim_drought,
+                    'rainfall': sim_rainfall,
+                    'temp': sim_temp,
+                    'pop_growth': sim_pop_growth,
+                    'industrial': sim_industrial,
+                    'agricultural': sim_agricultural,
+                    'cycles': sim_cycles
+                }
+                st.session_state['simulation_results'] = self.run_simulation(
                     sim_drought, sim_rainfall, sim_temp,
                     sim_pop_growth, sim_industrial, sim_agricultural,
                     sim_cycles
                 )
+                st.session_state['show_simulation'] = True
+                st.rerun()
         
-        # Note: The "Apply to Main System" button is moved outside the form
-        # and will be handled in the run_simulation method differently
+        # Display simulation results OUTSIDE the form
+        if st.session_state.get('show_simulation', False) and st.session_state.get('simulation_results') is not None:
+            self.display_simulation_results(st.session_state['simulation_results'])
     
     def run_simulation(self, drought, rainfall, temp, pop_growth, industrial, agricultural, cycles):
-        st.subheader("Simulation Results")
-        
+        """Run simulation and return results without displaying"""
         results = []
         current_levels = RESERVOIR_LEVELS.copy()
         current_supply = TOTAL_SUPPLIES.copy()
@@ -72,7 +86,21 @@ class ScenarioSimulator:
             
             results.append(cycle_results)
         
-        df_results = pd.DataFrame(results)
+        return {
+            'dataframe': pd.DataFrame(results),
+            'drought': drought,
+            'rainfall': rainfall,
+            'pop_growth': pop_growth
+        }
+    
+    def display_simulation_results(self, results):
+        """Display simulation results with Apply button"""
+        df_results = results['dataframe']
+        drought = results['drought']
+        rainfall = results['rainfall']
+        pop_growth = results['pop_growth']
+        
+        st.subheader("Simulation Results")
         
         # Display metrics
         col1, col2, col3 = st.columns(3)
@@ -82,7 +110,7 @@ class ScenarioSimulator:
         with col2:
             st.metric("Total Allocated", f"{df_results['region_1_allocation'].sum():,.0f} L")
         with col3:
-            st.metric("Weeks Simulated", cycles)
+            st.metric("Weeks Simulated", len(df_results))
         
         # Create visualizations
         fig = go.Figure()
@@ -132,17 +160,22 @@ class ScenarioSimulator:
 - **Scenario**: {'Drought' if drought else 'Normal'} Conditions
 - **Rainfall Reduction**: {rainfall}%
 - **Population Growth**: {pop_growth}%
-- **Industrial Growth**: {industrial}%
-- **Agricultural Change**: {agricultural}%
 
 **Recommendation**: {'Implement conservation measures' if drought else 'Normal operations continue'}
         """
         st.markdown(summary)
         
-        # Move the Apply button outside of any form
-        # This creates a new button in the main area, not inside a form
-        if st.button("✅ Apply This Scenario to Main System", key="apply_scenario"):
+        # Apply button - This is now OUTSIDE any form
+        if st.button("✅ Apply This Scenario to Main System", key="apply_scenario", use_container_width=True):
             st.session_state.drought_mode = drought
-            st.success("✅ Scenario applied to main system! Drought mode is now " + 
-                      ("ON" if drought else "OFF"))
+            st.success(f"✅ Scenario applied to main system! Drought mode is now {'ON' if drought else 'OFF'}")
+            # Clear simulation results after applying
+            st.session_state['show_simulation'] = False
+            st.session_state['simulation_results'] = None
+            st.rerun()
+        
+        # Clear button
+        if st.button("🔄 Clear Results", key="clear_simulation", use_container_width=True):
+            st.session_state['show_simulation'] = False
+            st.session_state['simulation_results'] = None
             st.rerun()
