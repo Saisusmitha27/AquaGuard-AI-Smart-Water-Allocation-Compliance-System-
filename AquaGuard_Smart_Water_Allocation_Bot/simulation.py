@@ -11,6 +11,7 @@ class ScenarioSimulator:
     def render(self):
         st.subheader("🎯 Scenario Planning & Simulation")
         
+        # Create the form
         with st.form("scenario_form"):
             col1, col2 = st.columns(2)
             
@@ -28,12 +29,18 @@ class ScenarioSimulator:
             
             sim_cycles = st.slider("Simulation Cycles (Weeks)", 1, 12, 4)
             
-            if st.form_submit_button("🚀 Run Simulation", use_container_width=True):
+            # Use form_submit_button instead of button
+            submitted = st.form_submit_button("🚀 Run Simulation", use_container_width=True)
+            
+            if submitted:
                 self.run_simulation(
                     sim_drought, sim_rainfall, sim_temp,
                     sim_pop_growth, sim_industrial, sim_agricultural,
                     sim_cycles
                 )
+        
+        # Note: The "Apply to Main System" button is moved outside the form
+        # and will be handled in the run_simulation method differently
     
     def run_simulation(self, drought, rainfall, temp, pop_growth, industrial, agricultural, cycles):
         st.subheader("Simulation Results")
@@ -67,6 +74,7 @@ class ScenarioSimulator:
         
         df_results = pd.DataFrame(results)
         
+        # Display metrics
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Final Reservoir Level", f"{df_results['region_1_level'].iloc[-1]:.1f}%", 
@@ -76,6 +84,7 @@ class ScenarioSimulator:
         with col3:
             st.metric("Weeks Simulated", cycles)
         
+        # Create visualizations
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df_results['cycle'],
@@ -117,6 +126,7 @@ class ScenarioSimulator:
         )
         st.plotly_chart(fig2, use_container_width=True)
         
+        # Summary
         summary = f"""
 ### Simulation Summary
 - **Scenario**: {'Drought' if drought else 'Normal'} Conditions
@@ -129,6 +139,10 @@ class ScenarioSimulator:
         """
         st.markdown(summary)
         
-        if st.button("Apply This Scenario to Main System"):
+        # Move the Apply button outside of any form
+        # This creates a new button in the main area, not inside a form
+        if st.button("✅ Apply This Scenario to Main System", key="apply_scenario"):
             st.session_state.drought_mode = drought
-            st.success("Scenario applied to main system!")
+            st.success("✅ Scenario applied to main system! Drought mode is now " + 
+                      ("ON" if drought else "OFF"))
+            st.rerun()
